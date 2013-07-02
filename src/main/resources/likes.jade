@@ -1,0 +1,26 @@
+!!! 5
+html
+    head
+        title= pageName
+    body
+        div#likes
+            for like in likes
+                div.like
+                    div.info
+                        ul
+                            title  = like.realTitle
+                            artist = like.realArtist
+                            album  = like.realAlbum
+
+                            if (title  == null)
+                                title  =  like.title
+                            if (artist == null)
+                                artist =  like.artist
+                            if (album  == null)
+                                album  =  like.album
+
+                            li= title
+                            li= artist
+                            li= album
+                    div.art
+                        img(src="#{like.art}")

@@ -1,3 +1,7 @@
+import com.fasterxml.jackson.core.JsonProcessingException;
+import de.neuland.jade4j.JadeConfiguration;
+import de.neuland.jade4j.template.JadeTemplate;
+import org.apache.commons.io.IOUtils;
 import org.dom4j.DocumentException;
 import org.dom4j.Node;
 import org.dom4j.io.SAXReader;
@@ -9,7 +13,11 @@ import org.jsoup.nodes.Element;
 import org.junit.Before;
 import org.junit.Test;
 
+import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBException;
+import javax.xml.bind.Marshaller;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.util.*;
@@ -19,14 +27,18 @@ import java.util.regex.Pattern;
 public class PandoraLikeTest {
 
     private static final int MAX_PAGES = 100;
+    private static final String SEARCH = "https://itunes.apple.com/search?term=TERM&entity=ENTITY&media=MEDIA";
     private static final String SEARCH_ALBUM_BY_TITLE = "https://itunes.apple.com/search?term=TITLE&entity=album";
     private static final String SEARCH_ALBUM_BY_ALBUM = "https://itunes.apple.com/search?term=ALBUM&entity=album";
+
+    private static final String PATH_WINDOWS = "C:\\Users\\vbalaji\\Desktop\\temp";
+    private static final String PATH_MAC_OSX = "/Users/Sephiroth/Desktop/";
 
     private PandoraLike pl;
 
     @Before
     public void before() {
-        pl = new PandoraLike("sephirothkh7");
+        pl = new PandoraLike("shortballer38");
     }
 
     //@Test
@@ -93,10 +105,10 @@ public class PandoraLikeTest {
     //@Test
     public void testRead() {
 
-        pl.readLikesFromFile(new File("/Users/Sephiroth/Desktop/test.txt"), false);
+        pl.initFromFile(new File(PATH_WINDOWS, "test-xml-read.txt"));
 
         for (LikeInfo like : pl.getLikes()) {
-            System.out.println(like.toStringNoArt());
+            System.out.println(like.toStringAll());
         }
     }
 
@@ -105,58 +117,67 @@ public class PandoraLikeTest {
 
         testRead();
 
-        File out = new File("/Users/Sephiroth/Desktop/test-write.txt");
+        File out = new File(PATH_WINDOWS, "test-xml-write.txt");
 
         if (out.exists()) {
             out.delete();
         }
 
-        pl.writeLikesToFile(out, false);
+        pl.writeLikesToFile(out);
 
         for (LikeInfo like : pl.getLikes()) {
-            System.out.println(like.toString());
+            //System.out.println(toString());
         }
     }
 
-    @Test
+    //@Test
     public void testGetArt() {
 
-        pl.readLikesFromFile(new File("/Users/Sephiroth/Desktop/test.txt"), false);
+        //testRead();
+
+        pl.readLikesFromFile(new File("/Users/Sephiroth/Desktop/test.txt"));
 
         int limit = 20;
 
         for (LikeInfo like : pl.getLikes()) {
             if (like.getAlbum().contains("-explicit") && (--limit > 0)) {
                 try {
-                    String title = Jsoup.connect(SEARCH_ALBUM_BY_TITLE.replaceAll("TITLE", like.getTitle())).get().body().text();
-                    String album = Jsoup.connect(SEARCH_ALBUM_BY_ALBUM.replaceAll("ALBUM", like.getAlbum())).get().body().text();
-
-                    JSONObject titleJson = new JSONObject(title);
-                    JSONObject albumJson = new JSONObject(album);
-                    JSONArray titleResults = titleJson.getJSONArray("results");
-                    JSONArray albumResults = albumJson.getJSONArray("results");
-
                     System.out.print(like.toStringNoArt() + ": ");
                     String art = null;
 
-                    for (int i = 0; i < titleResults.length(); i++) {
-                        JSONObject titleResult = titleResults.getJSONObject(i);
+                    String track = Jsoup.connect(SEARCH
+                            .replaceAll("TERM", like.getTitle())
+                            .replaceAll("ENTITY", "musicTrack")
+                            .replaceAll("MEDIA", "music"))
+                            .get().body().text();
+                    JSONObject trackJson = new JSONObject(track);
+                    JSONArray trackResults = trackJson.getJSONArray("results");
+
+                    for (int i = 0; i < trackResults.length(); i++) {
+                        JSONObject trackResult = trackResults.getJSONObject(i);
 
                         try {
-                            String tArtist = transform(titleResult.getString("artistViewUrl"));
-                            String tAlbum  = transform(titleResult.getString("collectionViewUrl"));
+                            String tArtist = transform(trackResult.getString("artistViewUrl"));
+                            String tAlbum = transform(trackResult.getString("collectionViewUrl"));
+                            String tTitle = transform(trackResult.getString("trackViewUrl"));
+
                             String lArtist = transform(like.getArtist());
                             String lAlbum  = transform(like.getAlbum());
+                            String lTitle = transform(like.getTitle());
 
-                            //System.out.format("%s\n%s\n%s\n%s\n", tArtist, tAlbum, lArtist, lAlbum);
+                            //System.out.format("%s\n%s\n", tArtist, lArtist);
 
                             if (tArtist.contains(like.getArtist()) ||
-                                    tAlbum.contains(like.getAlbum()) ||
-                                    transform2(tArtist).contains(lArtist) ||
-                                    transform2(tAlbum).contains(lAlbum) ||
-                                    transform2(tArtist).contains(transform2(lArtist)) ||
-                                    transform2(tAlbum).contains(transform2(lAlbum))) {
-                                art = titleResult.getString("artworkUrl100");
+                                tAlbum.contains(like.getAlbum()) ||
+                                transform2(tArtist).contains(lArtist) ||
+                                transform2(tAlbum).contains(lAlbum) ||
+                                transform2(tArtist).contains(transform2(lArtist)) ||
+                                transform2(tAlbum).contains(transform2(lAlbum))) {
+
+                                art = trackResult.getString("artworkUrl60");
+                                like.setRealAlbum(trackResult.getString("collectionName"));
+                                like.setRealArtist(trackResult.getString("artistName"));
+                                like.setRealTitle(trackResult.getString("trackName"));
                                 break;
                             }
                         } catch (Exception e) {
@@ -165,6 +186,11 @@ public class PandoraLikeTest {
                     }
 
                     if (art == null) {
+
+                        String album = Jsoup.connect(SEARCH_ALBUM_BY_ALBUM.replaceAll("ALBUM", like.getAlbum())).get().body().text();
+                        JSONObject albumJson = new JSONObject(album);
+                        JSONArray albumResults = albumJson.getJSONArray("results");
+
                         for (int i = 0; i < albumResults.length(); i++) {
                             JSONObject albumResult = albumResults.getJSONObject(i);
 
@@ -175,9 +201,45 @@ public class PandoraLikeTest {
                                 //System.out.format("%s\n%s\n", tArtist, lArtist);
 
                                 if (tArtist.contains(like.getArtist()) ||
-                                    transform2(tArtist).contains(lArtist) ||
-                                    transform2(tArtist).contains(transform2(lArtist))) {
+                                        transform2(tArtist).contains(lArtist) ||
+                                        transform2(tArtist).contains(transform2(lArtist))) {
                                     art = albumResult.getString("artworkUrl60");
+                                    like.setRealAlbum(albumResult.getString("collectionName"));
+                                    like.setRealArtist(albumResult.getString("artistName"));
+                                    break;
+                                }
+                            } catch (Exception e) {
+
+                            }
+                        }
+                    }
+
+                    if (art == null) {
+
+                        String title = Jsoup.connect(SEARCH_ALBUM_BY_TITLE.replaceAll("TITLE", like.getTitle())).get().body().text();
+                        JSONObject titleJson = new JSONObject(title);
+                        JSONArray titleResults = titleJson.getJSONArray("results");
+
+                        for (int i = 0; i < titleResults.length(); i++) {
+                            JSONObject titleResult = titleResults.getJSONObject(i);
+
+                            try {
+                                String tArtist = transform(titleResult.getString("artistViewUrl"));
+                                String tAlbum  = transform(titleResult.getString("collectionViewUrl"));
+                                String lArtist = transform(like.getArtist());
+                                String lAlbum  = transform(like.getAlbum());
+
+                                //System.out.format("%s\n%s\n%s\n%s\n", tArtist, tAlbum, lArtist, lAlbum);
+
+                                if (tArtist.contains(like.getArtist()) ||
+                                        tAlbum.contains(like.getAlbum()) ||
+                                        transform2(tArtist).contains(lArtist) ||
+                                        transform2(tAlbum).contains(lAlbum) ||
+                                        transform2(tArtist).contains(transform2(lArtist)) ||
+                                        transform2(tAlbum).contains(transform2(lAlbum))) {
+                                    art = titleResult.getString("artworkUrl60");
+                                    like.setRealAlbum(titleResult.getString("collectionName"));
+                                    like.setRealArtist(titleResult.getString("artistName"));
                                     break;
                                 }
                             } catch (Exception e) {
@@ -187,9 +249,8 @@ public class PandoraLikeTest {
                     }
 
                     like.setArt(art);
-                    //System.out.println(art);
-                    System.out.println(toHTML(like.getArtist(), like.getAlbum(), like.getTitle(), like.getArt()));
-
+                    //System.out.println(toHTML(like.getArtist(), like.getAlbum(), like.getTitle(), like.getArt()));
+                    //System.out.format("%s\n%s\n%s\n%s\n\n", like.getRealArtist(), like.getRealAlbum(), like.getRealTitle(), like.getArt());
                 } catch (Exception e) {
 
                 }
@@ -197,24 +258,78 @@ public class PandoraLikeTest {
         }
     }
 
-    private String toHTML(String artist, String album, String title, String art) {
+    //@Test
+    public void testToXml() throws JsonProcessingException {
 
-        return
-                "<div>" +
-                        "<div>" +
-                           "<span>Artist: " + artist + "</span>" +
-                           "<span>" + art + "</span>" +
-                        "</div>" +
-                        "<div>" +
-                            "<span>Album: " + album + "</span>" +
-                        "</div>" +
-                "</div>";
+        testRead();
+
+        /*ObjectMapper xmlMapper = new XmlMapper();
+
+        for (LikeInfo like : pl.getLikes()) {
+            String xml = xmlMapper.writeValueAsString(like);
+            System.out.println(xml);
+        }*/
+
+        try {
+
+            File file = new File(PATH_WINDOWS, "test-xml.xml");
+
+            if (file.exists()) {
+                file.delete();
+            }
+
+            //JAXBContext jaxbContext = JAXBContext.newInstance(LikeInfo.class);
+            JAXBContext jaxbContext = JAXBContext.newInstance(Likes.class);
+            Marshaller jaxbMarshaller = jaxbContext.createMarshaller();
+
+            // output pretty printed
+            jaxbMarshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
+
+            /*for (LikeInfo like : pl.getLikes()) {
+                jaxbMarshaller.marshal(like, file);
+                jaxbMarshaller.marshal(like, System.out);
+            }*/
+
+            jaxbMarshaller.marshal(new Likes().withLikes(pl.getLikes()), file);
+            jaxbMarshaller.marshal(new Likes().withLikes(pl.getLikes()), System.out);
+
+        } catch (JAXBException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void testJade4J() throws IOException {
+
+        //pl.initFromFileWithArt(new File(PATH_WINDOWS, "test-xml-read.xml"));
+        pl.init();
+
+        String jade = this.getClass().getResource("/likes.jade").getFile();
+
+        JadeConfiguration config = new JadeConfiguration();
+        config.setPrettyPrint(true);
+
+        JadeTemplate template = config.getTemplate(jade);
+
+        Map<String, Object> model = new HashMap<String, Object>();
+        model.put("likes", pl.getLikes());
+        model.put("pageName", "Pandora Likes");
+
+        String html = config.renderTemplate(template, model);
+
+        File out = new File(PATH_WINDOWS, "test-html.html");
+
+        if (out.exists()) {
+            out.delete();
+        }
+
+        IOUtils.write(html, new FileOutputStream(out));
     }
 
     //@Test
     public void testTransWords() {
 
-        pl.readLikesFromFile(new File("/Users/Sephiroth/Desktop/test.txt"), false);
+        pl.readLikesFromFile(new File("/Users/Sephiroth/Desktop/test.txt"));
 
         for (LikeInfo like : pl.getLikes()) {
             System.out.println(transform2(like.toStringNoArt()));
