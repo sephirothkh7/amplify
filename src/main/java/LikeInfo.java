@@ -1,9 +1,27 @@
-public class LikeInfo {
+import javax.xml.bind.annotation.*;
 
+import static java.lang.String.format;
+
+@XmlRootElement(name="like")
+@XmlType(propOrder = {
+        "title",
+        "artist",
+        "album",
+        "art",
+        "realTitle",
+        "realArtist",
+        "realAlbum"
+})
+
+public class LikeInfo {
+    
     private String title;
     private String artist;
     private String album;
     private String art;
+    private String realTitle;
+    private String realArtist;
+    private String realAlbum;
 
     public LikeInfo withTitle(String title) {
         this.title = title;
@@ -24,6 +42,20 @@ public class LikeInfo {
         return this;
     }
 
+    public LikeInfo withRealTitle(String realTitle) {
+        this.realTitle = realTitle;
+        return this;
+    }
+
+    public LikeInfo withRealArtist(String realArtist) {
+        this.realArtist = realArtist;
+        return this;
+    }
+    public LikeInfo withRealAlbum(String realAlbum) {
+        this.realAlbum = realAlbum;
+        return this;
+    }
+
     public String getTitle() {
         return title;
     }
@@ -40,8 +72,16 @@ public class LikeInfo {
         return art;
     }
 
-    public String toStringNoArt() {
-        return String.format("/%s/%s/%s/", artist, album, title);
+    public String getRealTitle() {
+        return realTitle;
+    }
+
+    public String getRealArtist() {
+        return realArtist;
+    }
+
+    public String getRealAlbum() {
+        return realAlbum;
     }
 
     public void setArt(String art) {
@@ -60,8 +100,36 @@ public class LikeInfo {
         this.album = album;
     }
 
+    public void setRealTitle(String realTitle) {
+        this.realTitle = realTitle;
+    }
+
+    public void setRealArtist(String realArtist) {
+        this.realArtist = realArtist;
+    }
+
+    public void setRealAlbum(String realAlbum) {
+        this.realAlbum = realAlbum;
+    }
+
     @Override
     public String toString() {
-        return String.format("/%s/%s/%s/%s", artist, album, title, art);
+        return format("/%s/%s/%s/%s", artist, album, title, art);
+    }
+
+    public String toStringNoArt() {
+        return format("/%s/%s/%s/", artist, album, title);
+    }
+
+    public String toStringReal() {
+        return format("/%s/%s/%s/", realArtist, realAlbum, realTitle);
+    }
+
+    public String toStringAll() {
+        return format("/%s/%s/%s/%s/%s/%s/%s", artist, album, title, art, realArtist, realAlbum, realTitle);
+    }
+
+    public String toStringAllButArt() {
+        return format("/%s/%s/%s/%s/%s/%s", artist, album, title, realArtist, realAlbum, realTitle);
     }
 }
