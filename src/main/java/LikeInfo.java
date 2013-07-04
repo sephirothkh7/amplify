@@ -14,9 +14,12 @@ import static java.lang.String.format;
 })
 
 public class LikeInfo {
-    
+
+    @XmlElement
     private String title;
+    @XmlElement
     private String artist;
+    @XmlElement
     private String album;
     private String art;
     private String realTitle;
@@ -88,7 +91,7 @@ public class LikeInfo {
         this.art = art;
     }
 
-    public void setTitle(String title) {
+    /*public void setTitle(String title) {
         this.title = title;
     }
 
@@ -98,7 +101,7 @@ public class LikeInfo {
 
     public void setAlbum(String album) {
         this.album = album;
-    }
+    }*/
 
     public void setRealTitle(String realTitle) {
         this.realTitle = realTitle;
@@ -113,6 +116,27 @@ public class LikeInfo {
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof LikeInfo)) return false;
+
+        LikeInfo l = (LikeInfo) o;
+
+        return (l.title.equals(title) &&
+                l.artist.equals(artist) &&
+                l.album.equals(album));
+
+    }
+
+    @Override
+    public int hashCode() {
+        int hash = 1;
+        hash = hash * 17 + title.hashCode();
+        hash = hash * 31 + artist.hashCode();
+        hash = hash * 13 + album.hashCode();
+        return hash;
+    }
+
+    @Override
     public String toString() {
         return format("/%s/%s/%s/%s", artist, album, title, art);
     }
@@ -122,6 +146,10 @@ public class LikeInfo {
     }
 
     public String toStringReal() {
+        return format("/%s/%s/%s/%s", realArtist, realAlbum, realTitle, art);
+    }
+
+    public String toStringRealNoArt() {
         return format("/%s/%s/%s/", realArtist, realAlbum, realTitle);
     }
 

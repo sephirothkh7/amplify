@@ -1,23 +1,66 @@
 import javax.xml.bind.annotation.XmlElementRef;
 import javax.xml.bind.annotation.XmlRootElement;
-import java.util.Set;
+import java.util.*;
 
 @XmlRootElement(name="likes")
-public class Likes {
+public class Likes implements Iterable<LikeInfo> {
 
-    private Set<LikeInfo> likes;
+    private List<LikeInfo> likes = new ArrayList<LikeInfo>();
 
-    public Likes withLikes(Set<LikeInfo> likes) {
-        this.likes = likes;
+    public Likes withLikes(List<LikeInfo> likes) {
+        this.likes = new ArrayList<LikeInfo>(new HashSet<LikeInfo>(likes));
         return this;
     }
 
     @XmlElementRef
-    public Set<LikeInfo> getLikes() {
+    public List<LikeInfo> getLikes() {
         return likes;
     }
 
-    public void setLikes(Set<LikeInfo> likes) {
+    public void setLikes(List<LikeInfo> likes) {
         this.likes = likes;
+    }
+
+    public Likes removeDuplicates () {
+        this.likes = new ArrayList<LikeInfo>(new HashSet<LikeInfo>(likes));
+        return this;
+    }
+
+    public Likes sortByTitle() {
+        Collections.sort(likes, new Comparator<LikeInfo>() {
+            @Override
+            public int compare(LikeInfo o1, LikeInfo o2) {
+                return o1.getTitle().compareTo(o2.getTitle());
+            }
+        });
+
+        return this;
+    }
+
+    public Likes sortByArtist() {
+        Collections.sort(likes, new Comparator<LikeInfo>() {
+            @Override
+            public int compare(LikeInfo o1, LikeInfo o2) {
+                return o1.getArtist().compareTo(o2.getArtist());
+            }
+        });
+
+        return this;
+    }
+
+    public Likes sortByAlbum() {
+        Collections.sort(likes, new Comparator<LikeInfo>() {
+            @Override
+            public int compare(LikeInfo o1, LikeInfo o2) {
+                return o1.getAlbum().compareTo(o2.getAlbum());
+            }
+        });
+
+        return this;
+    }
+
+    @Override
+    public Iterator<LikeInfo> iterator() {
+        return likes.iterator();
     }
 }

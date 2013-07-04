@@ -13,6 +13,11 @@
             <id>jade4j-releases</id>
             <url>https://raw.github.com/neuland/jade4j/master/releases</url>
         </repository>
+        <repository>
+            <id>springsource-repo</id>
+            <name>SpringSource Repository</name>
+            <url>http://repo.springsource.org/release</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -56,6 +61,21 @@
             <artifactId>jade4j</artifactId>
             <version>0.3.12</version>
         </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+            <version>3.2.3.RELEASE</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>14.0.1</version>
+        </dependency>
+        <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-simple</artifactId>
+        <version>1.6.2</version>
+    </dependency>
     </dependencies>
 
     

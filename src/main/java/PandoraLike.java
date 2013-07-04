@@ -1,22 +1,28 @@
+import com.google.common.base.Joiner;
 import org.dom4j.Node;
 import org.dom4j.io.SAXReader;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.util.StringUtils;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Marshaller;
 import javax.xml.bind.Unmarshaller;
 import java.io.File;
+import java.io.IOException;
 import java.net.URL;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import static java.util.Arrays.asList;
 
 public class PandoraLike {
 
@@ -26,14 +32,18 @@ public class PandoraLike {
     private static final String SEARCH_ALBUM_BY_TITLE = "https://itunes.apple.com/search?term=TITLE&entity=album";
     private static final String SEARCH_ALBUM_BY_ALBUM = "https://itunes.apple.com/search?term=ALBUM&entity=album";
 
+    private static final Logger LOG = LoggerFactory.getLogger(PandoraLike.class);
+
     private String username;
     private Set<String> stations;
-    private Set<LikeInfo> likes;
+    private Likes likes;
+
+    private ExecutorService executor = Executors.newCachedThreadPool();
 
     public PandoraLike(String username) {
         this.username = username;
         this.stations = new HashSet<String>();
-        this.likes = new HashSet<LikeInfo>();
+        this.likes = new Likes().withLikes(new ArrayList<LikeInfo>());
     }
 
     public void init() {
@@ -75,13 +85,11 @@ public class PandoraLike {
         } catch (Exception e) {
 
         }
-
-
     }
 
     private void initLikes() {
 
-        Set<LikeInfo> likes = new HashSet<LikeInfo>();
+        List<LikeInfo> likes = new ArrayList<LikeInfo>();
 
         try {
             for (String station : stations) {
@@ -107,118 +115,103 @@ public class PandoraLike {
 
         }
 
-        this.likes = likes;
+        this.likes = new Likes().withLikes(likes);
     }
 
     private void initLikeArt() {
 
+        List<Callable<String>> tasks = new ArrayList<Callable<String>>();
+
         for (LikeInfo like : likes) {
+                tasks.add(new SearchTask(like));
+            }
+
+        try {
+            executor.invokeAll(tasks);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private boolean search(String term, LikeInfo like) throws IOException, JSONException {
+        JSONArray results = trackQuery(term);
+        for (int i = 0; i < results.length(); i++) {
+            JSONObject trackResult = results.getJSONObject(i);
             try {
-                String art = null;
 
-                String track = Jsoup.connect(SEARCH
-                        .replaceAll("TERM", like.getTitle())
-                        .replaceAll("ENTITY", "musicTrack")
-                        .replaceAll("MEDIA", "music"))
-                        .get().body().text();
-                JSONObject trackJson = new JSONObject(track);
-                JSONArray trackResults = trackJson.getJSONArray("results");
+                List<String> iTitleTokens = tokenize(clean(trackResult.getString("trackName")), " ");
+                List<String> iArtistTokens = tokenize(clean(trackResult.getString("artistName")), " ");
+                List<String> iAlbumTokens = tokenize(clean(trackResult.getString("collectionName")), " ");
+                List<String> lTitleTokens = tokenize(clean(like.getTitle()), "-");
+                List<String> lArtistTokens = tokenize(clean(like.getArtist()), "-");
+                List<String> lAlbumTokens = tokenize(clean(like.getAlbum()), "-");
 
-                for (int i = 0; i < trackResults.length(); i++) {
-                    JSONObject trackResult = trackResults.getJSONObject(i);
+                if (fuzzyMatch(iTitleTokens, lTitleTokens) &&
+                        (fuzzyMatch(iArtistTokens, lArtistTokens) ||
+                                fuzzyMatch(iAlbumTokens, lAlbumTokens))) {
 
-                    try {
-                        String tArtist = transform(trackResult.getString("artistViewUrl"));
-                        String tAlbum = transform(trackResult.getString("collectionViewUrl"));
-                        String tTitle = transform(trackResult.getString("trackViewUrl"));
-
-                        String lArtist = transform(like.getArtist());
-                        String lAlbum  = transform(like.getAlbum());
-                        String lTitle = transform(like.getTitle());
-
-                        if (tArtist.contains(like.getArtist()) ||
-                                tAlbum.contains(like.getAlbum()) ||
-                                transform2(tArtist).contains(lArtist) ||
-                                transform2(tAlbum).contains(lAlbum) ||
-                                transform2(tArtist).contains(transform2(lArtist)) ||
-                                transform2(tAlbum).contains(transform2(lAlbum))) {
-
-                            art = trackResult.getString("artworkUrl60");
-                            like.setRealAlbum(trackResult.getString("collectionName"));
-                            like.setRealArtist(trackResult.getString("artistName"));
-                            like.setRealTitle(trackResult.getString("trackName"));
-                            break;
-                        }
-                    } catch (Exception e) {
-
-                    }
+                    like.setArt(trackResult.getString("artworkUrl100"));
+                    like.setRealAlbum(trackResult.getString("collectionName"));
+                    like.setRealArtist(trackResult.getString("artistName"));
+                    like.setRealTitle(trackResult.getString("trackName"));
+                    return true;
                 }
 
-                if (art == null) {
-
-                    String album = Jsoup.connect(SEARCH_ALBUM_BY_ALBUM.replaceAll("ALBUM", like.getAlbum())).get().body().text();
-                    JSONObject albumJson = new JSONObject(album);
-                    JSONArray albumResults = albumJson.getJSONArray("results");
-
-                    for (int i = 0; i < albumResults.length(); i++) {
-                        JSONObject albumResult = albumResults.getJSONObject(i);
-
-                        try {
-                            String tArtist = transform(albumResult.getString("artistViewUrl"));
-                            String lArtist = transform(like.getArtist());
-
-                            if (tArtist.contains(like.getArtist()) ||
-                                    transform2(tArtist).contains(lArtist) ||
-                                    transform2(tArtist).contains(transform2(lArtist))) {
-                                art = albumResult.getString("artworkUrl60");
-                                like.setRealAlbum(albumResult.getString("collectionName"));
-                                like.setRealArtist(albumResult.getString("artistName"));
-                                break;
-                            }
-                        } catch (Exception e) {
-
-                        }
-                    }
-                }
-
-                if (art == null) {
-
-                    String title = Jsoup.connect(SEARCH_ALBUM_BY_TITLE.replaceAll("TITLE", like.getTitle())).get().body().text();
-                    JSONObject titleJson = new JSONObject(title);
-                    JSONArray titleResults = titleJson.getJSONArray("results");
-
-                    for (int i = 0; i < titleResults.length(); i++) {
-                        JSONObject titleResult = titleResults.getJSONObject(i);
-
-                        try {
-                            String tArtist = transform(titleResult.getString("artistViewUrl"));
-                            String tAlbum  = transform(titleResult.getString("collectionViewUrl"));
-                            String lArtist = transform(like.getArtist());
-                            String lAlbum  = transform(like.getAlbum());
-
-                            if (tArtist.contains(like.getArtist()) ||
-                                    tAlbum.contains(like.getAlbum()) ||
-                                    transform2(tArtist).contains(lArtist) ||
-                                    transform2(tAlbum).contains(lAlbum) ||
-                                    transform2(tArtist).contains(transform2(lArtist)) ||
-                                    transform2(tAlbum).contains(transform2(lAlbum))) {
-                                art = titleResult.getString("artworkUrl60");
-                                like.setRealAlbum(titleResult.getString("collectionName"));
-                                like.setRealArtist(titleResult.getString("artistName"));
-                                break;
-                            }
-                        } catch (Exception e) {
-
-                        }
-                    }
-                }
-
-                like.setArt(art);
 
             } catch (Exception e) {
 
             }
         }
+
+        return false;
+    }
+
+    private static String abbreviate(String string, String delim) {
+
+        List<String> tokens = tokenize(string, delim);
+        Joiner joiner = Joiner.on(delim);
+        return joiner.join(tokens.subList(0, tokens.size() / 2));
+    }
+
+    private JSONArray trackQuery(String param) throws IOException, JSONException {
+        String url = SEARCH
+                .replaceAll("TERM", param)
+                .replaceAll("ENTITY", "song")
+                .replaceAll("MEDIA", "music");
+        String track = Jsoup.connect(url)
+                .get().body().text();
+        JSONObject trackJson = new JSONObject(track);
+        return trackJson.getJSONArray("results");
+    }
+
+    private static List<String> tokenize(String item, String delim) {
+        return new ArrayList<String>(asList(StringUtils.tokenizeToStringArray(item, delim)));
+    }
+
+    private boolean fuzzyMatch(Collection<String> iTokens, Collection<String> lTokens) {
+        int iArtistTokenSize = iTokens.size();
+
+        try {
+            iTokens.removeAll(lTokens);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.exit(1);
+        }
+
+        double iDiff = (double) (iArtistTokenSize - iTokens.size());
+        double lSize = 0.5 * (double) lTokens.size();
+
+        return iDiff >= lSize;
+    }
+
+    private static String clean(String string) {
+        return string.toLowerCase()
+                .replaceAll("\ba", "")
+                .replaceAll("\ban", "")
+                .replaceAll("\bthe", "")
+                .replaceAll("explicit", "")
+                .replaceAll("\'", "")
+                .replaceAll("\\.", "");
     }
 
     public void readLikesFromFile(File file) {
@@ -226,7 +219,8 @@ public class PandoraLike {
             JAXBContext jaxbContext = JAXBContext.newInstance(Likes.class);
             Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
 
-            this.likes = ((Likes) unmarshaller.unmarshal(file)).getLikes();
+            this.likes = (Likes) unmarshaller.unmarshal(file);
+            this.likes.removeDuplicates();
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -247,35 +241,11 @@ public class PandoraLike {
             jaxbMarshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
 
 
-            jaxbMarshaller.marshal(new Likes().withLikes(getLikes()), file);
+            jaxbMarshaller.marshal(likes, file);
 
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-
-    public static String transform(String string) {
-
-        return string
-                .replaceAll("\ba", "")
-                .replaceAll("\ban", "")
-                .replaceAll("\bthe", "")
-                .replaceAll("-explicit/", "")
-                .replaceAll("-radio-single/", "");
-    }
-
-    private String transform2(String string) {
-        Pattern p = Pattern.compile("\\b\\d+");
-        Matcher m = p.matcher(string);
-        String result = string;
-        while (m.find()) {
-            result = result.replaceFirst(m.group(), NumberToWords.processor.getName(m.group()));
-        }
-        return result == null ? string : result;
-    }
-
-    public static String transformExplicit(String string) {
-        return string.replaceAll("-explicit", "");
     }
 
     public String getUsername() {
@@ -286,7 +256,44 @@ public class PandoraLike {
         return stations;
     }
 
-    public Set<LikeInfo> getLikes() {
+    public Likes getLikes() {
         return likes;
+    }
+
+    class SearchTask implements Callable<String> {
+
+        LikeInfo like;
+
+        private SearchTask(LikeInfo like) {
+            this.like = like;
+        }
+
+        @Override
+        public String call() {
+
+            try {
+                List<String> terms = new ArrayList<String>();
+
+                for (String string : asList(like.getTitle(), like.getAlbum(), like.getArtist())) {
+                    terms.add(string);
+                    terms.add(abbreviate(string, "-"));
+                }
+
+                for (String term : terms) {
+                    search(term, like);
+                }
+
+                if (like.getArt() != null) {
+                    String msg = like.toStringReal();
+                    LOG.info(msg);
+                    return msg;
+                }
+
+            } catch (Exception e) {
+
+            }
+
+            return null;
+        }
     }
 }

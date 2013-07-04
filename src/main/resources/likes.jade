@@ -2,6 +2,7 @@
 html
     head
         title= pageName
+        link(rel='stylesheet', href='likes.css', type='text/css' )
     body
         div#likes
             for like in likes
@@ -19,8 +20,8 @@ html
                             if (album  == null)
                                 album  =  like.album
 
-                            li= title
-                            li= artist
-                            li= album
+                            li(class = "title")= title
+                            li(class = "artist")= artist
+                            li(class = "album")= album
                     div.art
                         img(src="#{like.art}")
