@@ -30,8 +30,7 @@ public class PandoraLike {
     private static final int MAX_PAGES = 200;
     private static final String STATIONS_LINK = "http://feeds.pandora.com/feeds/people/username/stations.xml";
     private static final String SEARCH = "https://itunes.apple.com/search?term=TERM&entity=ENTITY&media=MEDIA";
-    private static final String SEARCH_ALBUM_BY_TITLE = "https://itunes.apple.com/search?term=TITLE&entity=album";
-    private static final String SEARCH_ALBUM_BY_ALBUM = "https://itunes.apple.com/search?term=ALBUM&entity=album";
+    private static final String PIRATE_SEARCH = "http://thepiratebay.sx/search/TERM/0/7/100";
 
     private static final Logger LOG = LoggerFactory.getLogger(PandoraLike.class);
 
@@ -151,6 +150,21 @@ public class PandoraLike {
         return false;
     }
 
+    public boolean pirateSearch(LikeInfo like) {
+        try {
+            Document doc =
+                    Jsoup.connect(
+                            PIRATE_SEARCH.replace("TERM",
+                                    String.format("%s-%s", like.getArtist(), like.getAlbum()))).get();
+            String magnet = doc.select("tr:first-child div.detName+a").attr("href");
+            like.setMagnet(magnet);
+        } catch (Exception e) {
+            return false;
+        }
+
+        return true;
+    }
+
     private static String abbreviate(String string, String delim) {
 
         List<String> tokens = tokenize(string, delim);
@@ -233,6 +247,10 @@ public class PandoraLike {
         }
     }
 
+    public String testGetSrc() {
+        return this.getClass().getResource("/").getPath();
+    }
+
     public String getUsername() {
         return username;
     }
@@ -303,7 +321,10 @@ public class PandoraLike {
                 }
 
                 for (String term : terms) {
-                    search(term, like);
+                    if (search(term, like)) {
+                        pirateSearch(like);
+                        break;
+                    }
                 }
 
                 if (like.getArt() != null) {

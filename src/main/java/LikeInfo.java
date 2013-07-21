@@ -3,7 +3,7 @@ import javax.xml.bind.annotation.*;
 import static java.lang.String.format;
 
 @XmlRootElement(name="like")
-@XmlType(propOrder = {
+/*@XmlType(propOrder = {
         "title",
         "artist",
         "album",
@@ -11,7 +11,7 @@ import static java.lang.String.format;
         "realTitle",
         "realArtist",
         "realAlbum"
-})
+})*/
 
 public class LikeInfo {
 
@@ -21,10 +21,13 @@ public class LikeInfo {
     private String artist;
     @XmlElement
     private String album;
-    private String art;
+
     private String realTitle;
     private String realArtist;
     private String realAlbum;
+
+    private String art;
+    private String magnet;
 
     public LikeInfo withTitle(String title) {
         this.title = title;
@@ -75,6 +78,10 @@ public class LikeInfo {
         return art;
     }
 
+    public String getMagnet() {
+        return magnet;
+    }
+
     public String getRealTitle() {
         return realTitle;
     }
@@ -89,6 +96,10 @@ public class LikeInfo {
 
     public void setArt(String art) {
         this.art = art;
+    }
+
+    public void setMagnet(String magnet) {
+        this.magnet = magnet;
     }
 
     /*public void setTitle(String title) {
@@ -138,7 +149,16 @@ public class LikeInfo {
 
     @Override
     public String toString() {
-        return format("/%s/%s/%s/%s", artist, album, title, art);
+        return "LikeInfo{" +
+                "title='" + title + '\'' +
+                ", artist='" + artist + '\'' +
+                ", album='" + album + '\'' +
+                ", realTitle='" + realTitle + '\'' +
+                ", realArtist='" + realArtist + '\'' +
+                ", realAlbum='" + realAlbum + '\'' +
+                ", art='" + art + '\'' +
+                ", magnet='" + magnet + '\'' +
+                '}';
     }
 
     public String toStringNoArt() {

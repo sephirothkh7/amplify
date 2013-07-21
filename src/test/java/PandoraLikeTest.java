@@ -6,6 +6,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +15,8 @@ import org.springframework.util.StringUtils;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.SocketTimeoutException;
+import java.net.URISyntaxException;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -24,6 +27,7 @@ import static java.util.Arrays.asList;
 public class PandoraLikeTest {
 
     private static final String SEARCH = "https://itunes.apple.com/search?term=TERM&entity=ENTITY&media=MEDIA";
+    private static final String PIRATE_SEARCH = "http://thepiratebay.sx/search/TERM/0/7/100";
     private static final String PATH_WINDOWS = "C:\\Users\\vbalaji\\Desktop\\";
     private static final String PATH_MAC_OSX = "/Users/Sephiroth/Desktop/";
 
@@ -53,10 +57,10 @@ public class PandoraLikeTest {
 
         //pl.readLikesFromFile(new File(PATH_WINDOWS, "test-xml-read-concurrent.xml"));
 
-        int limit = 1000;
+        int limit = 2000;
         List<Callable<String>> tasks = new ArrayList<Callable<String>>();
 
-        for (LikeInfo likeInfo : pl.getLikes()) {
+        for (LikeInfo likeInfo : likes) {
             final LikeInfo like = likeInfo;
             if ((limit-- > 0)) {
                 tasks.add(
@@ -75,14 +79,13 @@ public class PandoraLikeTest {
                                     }
 
                                     for (String term : terms) {
-                                        search(term, like);
+                                        if (search(term, like)) {
+                                            pirateSearch(like);
+                                            break;
+                                        }
                                     }
 
-                                    if (like.getArt() != null) {
-                                        String msg = like.toStringReal();
-                                        //LOG.info(msg);
-                                        return msg;
-                                    }
+                                    LOG.info(like.getMagnet());
 
                                 } catch (Exception e) {
 
@@ -97,7 +100,7 @@ public class PandoraLikeTest {
 
         executor.invokeAll(tasks);
 
-        pl.writeLikesToFile(new File(PATH_WINDOWS, "test-xml-write-concurrent.xml"));
+        //pl.writeLikesToFile(new File(PATH_MAC_OSX, "test-xml-write-concurrent.xml"));
     }
 
     //@Test
@@ -115,18 +118,44 @@ public class PandoraLikeTest {
         JadeTemplate template = config.getTemplate(jade);
 
         Map<String, Object> model = new HashMap<String, Object>();
-        model.put("likes", pl.getLikes().sortByAlbum());
+        model.put("likes", pl.getLikes().getLikes().subList(0, 30));
         model.put("pageName", "Pandora Likes");
 
         String html = config.renderTemplate(template, model);
 
-        File out = new File(PATH_WINDOWS, "test-html-real.html");
+        File out = new File(PATH_MAC_OSX, "test-html-real.html");
 
         if (out.exists()) {
             out.delete();
         }
 
         IOUtils.write(html, new FileOutputStream(out));
+    }
+
+    //@Test
+    public void getPirateSearch() {
+
+        pl.initFromFileWithArt(new File(PATH_MAC_OSX, "test-xml-read-concurrent.xml"));
+
+        for (LikeInfo like : pl.getLikes().getLikes().subList(0, 10)) {
+            try {
+                Document doc =
+                        Jsoup.connect(
+                                PIRATE_SEARCH.replace("TERM",
+                                        String.format("%s-%s", like.getArtist(), like.getAlbum()))).get();
+                System.out.println(doc.baseUri());
+                String magnetUrl = doc.select("tr:first-child div.detName+a").attr("href");
+                System.out.println(magnetUrl);
+
+            } catch (Exception e) {
+
+            }
+        }
+    }
+
+    //@Test
+    public void testGetSrc() throws URISyntaxException {
+        System.out.println(this.getClass().getResource("/likes.jade").getFile());
     }
 
     private boolean search(String term, LikeInfo like) throws IOException, JSONException {
@@ -162,6 +191,26 @@ public class PandoraLikeTest {
         return false;
     }
 
+    public boolean pirateSearch(LikeInfo like) {
+        try {
+            Document doc =
+                    Jsoup.connect(
+                            PIRATE_SEARCH.replace("TERM",
+                                    String.format("%s-%s", like.getArtist(), like.getAlbum())))
+                                        .timeout(3000).get();
+            String magnet = doc.select("tr:first-child div.detName+a").attr("href");
+
+            if (magnet == null) return false;
+
+            like.setMagnet(magnet);
+        } catch (Exception e) {
+            if (!(e instanceof SocketTimeoutException)) e.printStackTrace();
+            return false;
+        }
+
+        return true;
+    }
+
     private static String abbreviate(String string, String delim) {
 
         List<String> tokens = tokenize(string, delim);
@@ -174,7 +223,6 @@ public class PandoraLikeTest {
                 .replaceAll("TERM", param)
                 .replaceAll("ENTITY", "song")
                 .replaceAll("MEDIA", "music");
-        //System.out.println(url);
         String track = Jsoup.connect(url)
                 .get().body().text();
         JSONObject trackJson = new JSONObject(track);
