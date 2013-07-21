@@ -7,7 +7,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.junit.Before;
-import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.StringUtils;
@@ -35,7 +34,16 @@ public class PandoraLikeTest {
 
     @Before
     public void before() {
-        pl = new PandoraLike("shortballer38");
+        pl = new PandoraLike("sephirothkh7");
+    }
+
+    //@Test
+    public void testAsyncGetLikes() {
+        pl.initStations();
+        pl.initLikes();
+        for (LikeInfo like : pl.getLikes()) {
+            System.out.println(like.toString());
+        }
     }
 
     //@Test
@@ -92,10 +100,10 @@ public class PandoraLikeTest {
         pl.writeLikesToFile(new File(PATH_WINDOWS, "test-xml-write-concurrent.xml"));
     }
 
-    @Test
+    //@Test
     public void testJade4J() throws IOException, InterruptedException {
-
-        pl.initFromFileWithArt(new File(PATH_WINDOWS, "test-xml-read-concurrent.xml"));
+        testAsyncGetLikes();
+        //pl.initFromFileWithArt(new File(PATH_WINDOWS, "test-xml-read-concurrent.xml"));
         //pl.init();
         testGetArt();
 

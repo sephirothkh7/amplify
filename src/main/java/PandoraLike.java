@@ -1,4 +1,5 @@
 import com.google.common.base.Joiner;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.dom4j.Node;
 import org.dom4j.io.SAXReader;
 import org.json.JSONArray;
@@ -26,7 +27,7 @@ import static java.util.Arrays.asList;
 
 public class PandoraLike {
 
-    private static final int MAX_PAGES = 100;
+    private static final int MAX_PAGES = 200;
     private static final String STATIONS_LINK = "http://feeds.pandora.com/feeds/people/username/stations.xml";
     private static final String SEARCH = "https://itunes.apple.com/search?term=TERM&entity=ENTITY&media=MEDIA";
     private static final String SEARCH_ALBUM_BY_TITLE = "https://itunes.apple.com/search?term=TITLE&entity=album";
@@ -38,7 +39,8 @@ public class PandoraLike {
     private Set<String> stations;
     private Likes likes;
 
-    private ExecutorService executor = Executors.newCachedThreadPool();
+    private static final int POOL_SIZE = 64;
+    private ExecutorService executor = Executors.newFixedThreadPool(POOL_SIZE);
 
     public PandoraLike(String username) {
         this.username = username;
@@ -61,7 +63,7 @@ public class PandoraLike {
         readLikesFromFile(file);
     }
 
-    private void initStations() {
+    public void initStations() {
         URL stationsURL = null;
         try {
             stationsURL = new URL(STATIONS_LINK.replace("username", username));
@@ -72,10 +74,7 @@ public class PandoraLike {
             List<Node> stationCodes = document.selectNodes( "//pandora:stationCode" );
             Set<String> stations = new HashSet<String>();
 
-            Iterator<Node> it = stationCodes.iterator();
-            while (it.hasNext()) {
-                Node stationCode = it.next();
-
+            for (Node stationCode : stationCodes) {
                 if (stationCode.getText().startsWith("sh")) {
                     stations.add(stationCode.getText().replaceAll("sh", ""));
                 }
@@ -87,35 +86,21 @@ public class PandoraLike {
         }
     }
 
-    private void initLikes() {
+    public void initLikes() {
 
-        List<LikeInfo> likes = new ArrayList<LikeInfo>();
+        List<Callable<String>> tasks = new ArrayList<Callable<String>>();
 
-        try {
-            for (String station : stations) {
-
-                for (int i = 0; i < MAX_PAGES; i++) {
-
-                    Document doc =
-                            Jsoup.connect("http://www.pandora.com/content/" +
-                                    "station_track_thumbs?" +
-                                    "stationId=" + station +
-                                    "&posFeedbackStartIndex=" + (i * 5)).get();
-                    for (Element e : doc.select("h3>a:first-of-type")) {
-                        String[] info = e.attr("href").split("/");
-
-                        likes.add(new LikeInfo()
-                                .withTitle(info[3])
-                                .withArtist(info[1])
-                                .withAlbum(info[2]));
-                    }
-                }
+        for (String station : stations) {
+            for (int i = 0; i < MAX_PAGES; i++) {
+                tasks.add(new LikeTask(station, i));
             }
-        } catch (Exception e) {
-
         }
 
-        this.likes = new Likes().withLikes(likes);
+        try {
+            executor.invokeAll(tasks);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     private void initLikeArt() {
@@ -258,6 +243,44 @@ public class PandoraLike {
 
     public Likes getLikes() {
         return likes;
+    }
+
+    class LikeTask implements Callable<String> {
+
+        String station;
+        int index;
+
+        private LikeTask(String station, int index) {
+            this.station = station;
+            this.index = index;
+        }
+
+        @Override
+        public String call() {
+            try {
+                Document doc =
+                        Jsoup.connect("http://www.pandora.com/content/" +
+                                "station_track_thumbs?" +
+                                "stationId=" + station +
+                                "&posFeedbackStartIndex=" + (index * 5)).timeout(10000).get();
+                for (Element e : doc.select("h3>a:first-of-type")) {
+                    String[] info = e.attr("href").split("/");
+
+                    LikeInfo like = new LikeInfo()
+                            .withTitle(info[3])
+                            .withArtist(info[1])
+                            .withAlbum(info[2]);
+
+                    synchronized (likes) {
+                        likes.getLikes().add(like);
+                    }
+                }
+            } catch (Exception e) {
+                LOG.error(ExceptionUtils.getStackTrace(e));
+            }
+
+            return "Done!";
+        }
     }
 
     class SearchTask implements Callable<String> {
